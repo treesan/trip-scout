@@ -1,0 +1,8 @@
+# travel-assistant 运行时依赖
+# 小红书口碑验证(vendor/xiaohongshu)需要 playwright
+playwright>=1.40.0
+# 携程差评抓取(scripts/ctrip_reviews.py)需要 requests
+requests>=2.31.0
+
+# 注: flyai-cli 和 lark-cli 是独立 npm/二进制, 见 SKILL.md 依赖表
+#     问道API只需 curl+jq, 无需额外安装

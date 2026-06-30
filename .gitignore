@@ -1,0 +1,20 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs
+*.log
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Trellis 开发框架(本地开发用,不属于 Skill 本体)
+.trellis/
+.claude/
+
+# 运行时输出(生成的地图 / 抓取数据)
+output/
