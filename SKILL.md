@@ -98,11 +98,11 @@ lark-cli drive +inspect --url 'https://my.feishu.cn/drive/folder/AhBBfyHLulWjdwd
    "{具体路线名} 路线图"         # 如已知路线名
    "{区域} 自驾游 避坑"          # 避坑版
    ```
-3. **筛选和适配** — 结合用户画像（双家庭、亲子友好、每天≤300km/4-5h、9:30出发拒绝早起）筛选路线
+3. **筛选和适配** — 结合用户画像（从 MEMORY.md 读取出行模式、驾驶节奏偏好等）筛选路线
 4. **高德API校正** — 用 amap-lbs-skill 校正每段路线的里程/时长/过路费
    ```bash
    export AMAP_WEBSERVICE_KEY="$AMAP_WEBSERVICE_KEY"
-   node /Users/tree/.openclaw/skills/amap-lbs-skill/scripts/route-planning.js \
+   node ~/.openclaw/skills/amap-lbs-skill/scripts/route-planning.js \
      --type=driving --origin=lng,lat --destination=lng,lat
    ```
 5. **快速酒店可行性检查** — 对每条候选路线的每个住宿点做快速检查（有无评分≥4.5的酒店），标注 ✅/⚠️/❌
@@ -118,7 +118,7 @@ lark-cli drive +inspect --url 'https://my.feishu.cn/drive/folder/AhBBfyHLulWjdwd
 2. 若住宿点无合格酒店 → 自动搜索周边有好酒店的地方
    - 高德POI搜索周边城镇（2小时内车程，可配置1小时）
      ```bash
-     node /Users/tree/.openclaw/skills/amap-lbs-skill/scripts/poi-search.js \
+     node ~/.openclaw/skills/amap-lbs-skill/scripts/poi-search.js \
        --keywords=镇 --location=lng,lat --radius=100000
      ```
    - 对候选城镇做快速酒店可行性检查
@@ -175,7 +175,7 @@ lark-cli docs +create --api-version v2 --content '<title>标题</title>...'
 
 ## 📅 每日详细行程
 ### D1 · {日期}（{星期}）| {行程描述}
-- ⏰ 时间安排（9:30出发，拒绝早起）
+- ⏰ 时间安排（按用户偏好，默认9:30出发）
 - 🏨 住宿详情
 - 🌟 沿途亮点/活动
 - 🛣️ 行驶路线（起点→终点 | Xkm | Xh | ¥过路费 | 路况）
@@ -192,8 +192,8 @@ lark-cli docs +create --api-version v2 --content '<title>标题</title>...'
 ## 🔑 方案亮点
 ```
 
-**租车提醒**（不集成搜索，用户自行在一嗨企业85折或神州选择7座MPV）：
-- 全险必买 | 儿童安全座椅确认 | 异地还车费 | 7座MPV车型（大众新威然/丰田格瑞维亚）
+**租车提醒**（不集成搜索，用户自行在一嗨或神州等平台选择）：
+- 全险必买 | 儿童安全座椅确认 | 异地还车费 | 车型选择（如7座MPV）
 - 油量规则（满油取满油还）| 车型锁定（提前3天APP+电话确认）
 
 **酒店住后评价闭环**：
@@ -308,7 +308,7 @@ python scripts/init_memory.py
 | `lark-cli` | 飞书读取/生成 | 见 [lark-shared](https://github.com/...) |
 | **Playwright** | 小红书口碑验证(内置 vendor) | `pip install -r requirements.txt && playwright install chromium` |
 | **requests** | 携程差评抓取(内置 API 调用) | 已含在 requirements.txt |
-| **amap-lbs-skill** | 高德驾车路线规划+POI搜索 | 已安装 `/Users/tree/.openclaw/skills/amap-lbs-skill` |
+| **amap-lbs-skill** | 高德驾车路线规划+POI搜索 | `openclaw skills install @lbs-amap/amap-lbs-skill` |
 
 ### 开箱即用说明(clone 后)
 
@@ -343,19 +343,19 @@ python scripts/xhs.py feed <feed_id> <xsec_token>
 高德地图能力使用已安装的 [amap-lbs-skill](https://github.com/openclaw/amap-lbs-skill):
 ```bash
 # 驾车路线规划(里程/时长/过路费)
-node /Users/tree/.openclaw/skills/amap-lbs-skill/scripts/route-planning.js \
+node ~/.openclaw/skills/amap-lbs-skill/scripts/route-planning.js \
   --type=driving --origin=lng,lat --destination=lng,lat
 
 # 带途经点
-node /Users/tree/.openclaw/skills/amap-lbs-skill/scripts/route-planning.js \
+node ~/.openclaw/skills/amap-lbs-skill/scripts/route-planning.js \
   --type=driving --origin=lng,lat --destination=lng,lat --waypoints=lng,lat;lng,lat
 
 # POI搜索(周边城镇/景点)
-node /Users/tree/.openclaw/skills/amap-lbs-skill/scripts/poi-search.js \
+node ~/.openclaw/skills/amap-lbs-skill/scripts/poi-search.js \
   --keywords=镇 --city=丹巴 --offset=10
 
 # 周边搜索(酒店联动调整)
-node /Users/tree/.openclaw/skills/amap-lbs-skill/scripts/poi-search.js \
+node ~/.openclaw/skills/amap-lbs-skill/scripts/poi-search.js \
   --keywords=镇 --location=lng,lat --radius=100000
 ```
 

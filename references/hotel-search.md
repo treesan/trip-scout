@@ -187,7 +187,7 @@ opencli browser navigate "https://hotels.ctrip.com/hotels/list?countryId=1&city=
 - 问道会话被锁定在单一酒店
 - 需要精确房型价格(含早/不含早分项)而问道只给区间
 
-参考 `/Users/tree/.openclaw/skills/ctrip`(纯方法论, 无可复用命令)——实际抓取靠 opencli-browser。
+参考 `~/.openclaw/skills/ctrip`(纯方法论, 无可复用命令)——实际抓取靠 opencli-browser。
 小红书降级同理: chrome-devtools-mcp 直连(见 references/xhs-hotel-research.md)。
 
 #### 榜单信息获取
