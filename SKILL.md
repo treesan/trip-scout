@@ -1,7 +1,7 @@
 ---
 name: trip-scout
 description: >
-  个人/家庭自驾游规划和机酒搜索助手。双场景驱动：场景一（机酒搜索）飞猪+携程双平台搜索，
+  个人/家庭机酒搜索和自驾游行程规划助手。双场景驱动：场景一（机酒搜索）飞猪+携程双平台搜索，
   智能酒店筛选（品牌信任梯度、加盟/直营识别、差评分析、黑榜），自进化学习；
   场景二（自驾游行程规划）小红书路线推荐→酒店联动调整→地图渲染→飞书攻略生成。
   触发词：搜机票、搜酒店、找酒店、订机票、机酒搜索、自驾游、行程规划、路线推荐、
@@ -10,7 +10,7 @@ description: >
 
 # Trip Scout
 
-个人/家庭自驾游规划和机酒搜索助手。核心能力：**场景驱动的旅行助手**。
+个人/家庭机酒搜索和自驾游行程规划助手。核心能力：**场景驱动的旅行助手**。
 
 ## 场景路由
 
@@ -340,7 +340,7 @@ python scripts/xhs.py search "川西小环线 自驾游路线" --limit 20  # 路
 python scripts/xhs.py feed <feed_id> <xsec_token>
 ```
 
-高德地图能力使用已安装的 [amap-lbs-skill](https://github.com/openclaw/amap-lbs-skill):
+高德地图能力使用已安装的 [amap-lbs-skill](https://clawhub.ai/lbs-amap/skills/amap-lbs-skill):
 ```bash
 # 驾车路线规划(里程/时长/过路费)
 node ~/.openclaw/skills/amap-lbs-skill/scripts/route-planning.js \

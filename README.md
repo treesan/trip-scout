@@ -1,6 +1,6 @@
 # Trip Scout 🧭
 
-> 个人 / 家庭自驾游机酒搜索与行程规划助手 — 双场景驱动：机酒搜索 + 自驾游行程规划
+> 个人 / 家庭机酒搜索与自驾游行程规划助手 — 双场景驱动：机酒搜索 + 自驾游行程规划
 
 Trip Scout 是一个多平台 AI Skill（Claude Code / OpenClaw），帮你搜机票、选酒店、避雷加盟翻牌、规划自驾行程，并从每次旅行中学习你的偏好。
 
@@ -65,7 +65,7 @@ ln -s /path/to/trip-scout ~/.openclaw/skills/trip-scout
 # 在 OpenClaw 中搜索 trip-scout 安装
 ```
 
-安装后同上初始化 Python 依赖和运行时记忆。高德地图能力使用已安装的 [amap-lbs-skill](https://github.com/openclaw/amap-lbs-skill)。
+安装后同上初始化 Python 依赖和运行时记忆。高德地图能力使用已安装的 [amap-lbs-skill](https://clawhub.ai/lbs-amap/skills/amap-lbs-skill)。
 
 ## 🚀 使用
 
@@ -115,7 +115,7 @@ vendor/xiaohongshu/      # 内置小红书客户端(MIT, 源自 DeliciousBuding/
 ## 🙏 致谢
 
 - [DeliciousBuding/xiaohongshu-skill](https://github.com/DeliciousBuding/xiaohongshu-skill) — 小红书 Playwright 客户端（MIT，已内化酒店口碑验证所需核心模块）
-- [amap-lbs-skill](https://github.com/openclaw/amap-lbs-skill) — 高德地图综合服务（驾车路线规划、POI搜索）
+- [hiyeshu/trip-map-builder](https://github.com/hiyeshu/trip-map-builder)  — 旅行行程规划技能：规划 → 小红书调研 → 交互式地图页面
 
 ## 📄 License
 
