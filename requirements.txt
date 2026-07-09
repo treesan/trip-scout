@@ -1,8 +1,21 @@
-# travel-assistant 运行时依赖
-# 小红书口碑验证(vendor/xiaohongshu)需要 playwright
+# trip-scout 运行时依赖
+
+# 携程差评抓取(vendor/ctrip) 需要 playwright
 playwright>=1.40.0
-# 携程差评抓取(scripts/ctrip_reviews.py)需要 requests
+# 携程差评API模式(vendor/ctrip/reviews.py)需要 requests
 requests>=2.31.0
+
+# 小红书纯API方案(vendor/xhs_api) 需要 PyExecJS 执行签名JS
+PyExecJS>=1.5.1
+# 小红书纯API方案的日志
+loguru>=0.7.0
+# 小红书QR码登录(终端显示)
+qrcode>=7.4.0
 
 # 注: flyai-cli 和 lark-cli 是独立 npm/二进制, 见 SKILL.md 依赖表
 #     问道API只需 curl+jq, 无需额外安装
+#     小红书签名JS还需 Node.js 运行时(PyExecJS 底层调用 node)
+#     首次使用: pip install -r requirements.txt
+#     携程差评/价格抓取还需: playwright install chromium
+#     小红书首次: cd vendor/xhs_api && npm install && python scripts/xhs.py qrcode
+#     携程差评首次: python scripts/ctrip_reviews.py login --show

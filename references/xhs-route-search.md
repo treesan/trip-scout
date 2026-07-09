@@ -27,20 +27,59 @@
 3. 如用户提到具体路线名，优先搜该路线名
 4. 避坑版用于验证候选路线的踩雷风险
 
-## 调用方式
+## 调用方式（纯 API 版本）
 
 ```bash
-# 确认登录（失效则 python scripts/xhs.py --show qrcode）
+# 确认登录（失效则 python scripts/xhs.py qrcode 或 set-cookie）
 python scripts/xhs.py check-login
 
-# 搜路线攻略（--show 必须，无头模式导航超时）
-python scripts/xhs.py --show search "川西小环线 自驾游路线" --limit 20
-python scripts/xhs.py --show search "川西 3天 自驾游" --limit 15
-python scripts/xhs.py --show search "川西 亲子自驾游" --limit 10
+# 搜路线攻略（纯API，无需浏览器）
+python scripts/xhs.py search "川西小环线 自驾游路线" --limit 20
+python scripts/xhs.py search "川西 3天 自驾游" --limit 15
+python scripts/xhs.py search "川西 亲子自驾游" --limit 10
 
-# 取最相关的 feed 详情
-python scripts/xhs.py --show feed <feed_id> <xsec_token>
+# 取最相关的笔记详情
+python scripts/xhs.py feed <note_id>
 ```
+
+## 互联网搜索降级方案（小红书不可用时）
+
+小红书不可用（cookie 失效/账号受限/API 签名失效）时，使用互联网搜索替代。
+
+判断方式：`python scripts/xhs.py check-login` 返回 `is_logged_in: false`
+
+### 搜索策略
+
+使用 `WebSearch` 工具搜索，搜索词模板与小红书一致：
+
+```
+"{区域} 自驾游路线 攻略"           # 首选
+"{区域} {天数}天 自驾游 行程"       # 按天数
+"{区域} 亲子自驾游 攻略"            # 亲子
+"{具体路线名} 路线图"              # 如已知路线名
+"{区域} 自驾游 避坑"               # 避坑版
+```
+
+### 信息来源优先级
+
+| 优先级 | 来源 | 特点 |
+|--------|------|------|
+| 🥇 | 马蜂窝攻略 | 行程结构化程度高，有每日行程/住宿/费用 |
+| 🥈 | 携程游记 | 有路线+住宿+费用，但需筛选广告 |
+| 🥉 | 穷游/知乎 | 内容质量参差，需更多人工判断 |
+| 4 | 通用网页 | 最广覆盖，但信息提取最困难 |
+
+### 与小红书搜索的差异
+
+| 维度 | 小红书搜索 | 互联网搜索降级 |
+|------|-----------|---------------|
+| 信息结构化 | 高（笔记有标题/正文/图片） | 低（网页格式各异） |
+| 路线图 | 有（图片URL可提取） | 无（需用户自行查看） |
+| 筛选效率 | 高（结构化JSON可程序筛选） | 低（需人工阅读判断） |
+| 广告过滤 | 有特征匹配规则 | 更困难（SEO内容多） |
+| 亲子信息 | 有（可搜"亲子"模板） | 较少（需额外搜索） |
+
+降级时需在路线推荐输出中标注"⚠️ 路线来源为互联网搜索，信息结构化程度低于小红书，请仔细核实"。
 
 ## 筛选标准（与酒店口碑验证完全不同）
 
@@ -121,13 +160,179 @@ python scripts/xhs.py --show feed <feed_id> <xsec_token>
 | 排序 | 负面信号优先（避雷） | 完整度+亲子友好+参考价值 |
 | 收敛 | 热门≥5/小众≥3，信号一致 | 至少3条指向同路线 |
 
+## 路线图片提取
+
+小红书路线笔记的关键信息（路线图、行程表）常以图片形式呈现。提取图片URL用于路线推荐输出。
+
+### 提取方式
+
+从 `scripts/xhs.py feed` 返回的笔记详情中提取图片URL：
+
+```bash
+# 获取笔记详情，返回含 image_list 字段
+python scripts/xhs.py --show feed <feed_id> <xsec_token>
+```
+
+`image_list` 字段包含笔记所有图片URL，格式为 `https://sns-webpic-qc.xhscdn.com/...`。
+
+### 图片筛选规则
+
+并非所有图片都是路线图，需按优先级筛选：
+
+| 优先级 | 图片类型 | 识别特征 |
+|--------|---------|---------|
+| 🥇 | 路线示意图 | 含地图轮廓、路线标注、城市节点连线 |
+| 🥈 | 行程表图片 | 含表格（天数/行程/住宿/里程） |
+| 🥉 | 风景照+文字标注 | 有地点文字叠加的风景照 |
+| ❌ | 纯风景照 | 无路线/行程信息（概率性误选可接受） |
+
+**注意**：纯文本模型无法识别图片内容，只能概率性选取（如取前2-3张图片）。多模态模型（如Kimi-K2.6）可精确识别路线图，但非必需。当前策略：**取笔记前3张图片URL输出，接受概率性误差**。
+
+### 输出到路线推荐
+
+提取的图片URL写入路线推荐输出的"🖼️ 参考路线图"部分：
+```markdown
+### 🖼️ 参考路线图（小红书笔记图片）
+- [路线图1](https://sns-webpic-qc.xhscdn.com/...) — 来源：{笔记标题}
+- [路线图2](https://sns-webpic-qc.xhscdn.com/...) — 来源：{笔记标题}
+```
+
+## 高德地图路线URL生成
+
+为每条候选路线生成高德地图预览链接，用户点击即可在浏览器/高德App中查看完整路线。
+
+### URL格式（唯一可用）
+
+```
+https://ditu.amap.com/dir?type=car&policy=1
+  &from[lnglat]={起点经度},{起点纬度}&from[name]={起点名称}
+  &to[lnglat]={终点经度},{终点纬度}&to[name]={终点名称}
+  &via[0][lnglat]={途经点1经度},{途经点1纬度}&via[0][name]={途经点1名称}
+  &via[1][lnglat]={途经点2经度},{途经点2纬度}&via[1][name]={途经点2名称}
+  ...
+```
+
+### 关键规则
+
+| 规则 | 说明                                               |
+|------|--------------------------------------------------|
+| 途经点格式 | **indexed via**：`via[0]`, `via[1]`, ...（必须用数组索引） |
+| 途经点上限 | 最多 **5个** 途经点稳定可用（6+可能不渲染）                       |
+| **环线优先** | **优先生成一条完整环线URL**（起终点相同），用户一次点击看全路线 |
+| 分段降级 | 仅当途经点超5个导致显示不全时，拆为"去程段"+"返程段"两段              |
+| 坐标格式 | `经度,纬度`（注意：高德是 lng,lat 顺序，不是 lat,lng）            |
+| policy参数 | `policy=3`（距离优先）；0=速度优先/2=避免收费/3=距离优先            |
+
+### ❌ 不可用格式（已验证废弃）
+
+| 格式 | 问题 |
+|------|------|
+| `uri.amap.com/navigation?via=lng,lat,name;lng,lat,name` | 重定向到 ditu.amap.com 后只解析第一个途经点 |
+| `uri.amap.com/navigation?vian=...&vialons=...&vialats=...&vianames=...` | 重定向后途经点全部丢失，手机App也不识别 |
+| `ditu.amap.com/dir?via[lnglat]=lng,lat;lng,lat` | 合并格式，途经点不渲染 |
+
+### 季节性路段处理
+
+独库公路等季节性道路，高德无法自动规划（即使开放期也默认绕行）：
+- 在路线地图预览中标注 ⚠️ "需在高德App中手动选择{路段名}"
+- 提供绕行路线信息作为备选（如"绕行伊宁 719km/8.7h"）
+- 用户在手机高德App中可手动选择季节性路线
+
+### 生成流程
+
+1. 从路线骨架提取每个节点的**高德坐标**（用 amap-lbs-skill 地理编码 API 获取）
+2. 按两段法分组途经点（去程/回程）
+3. 拼接 `ditu.amap.com/dir` URL
+4. 在路线推荐输出的"📍 路线地图预览"部分输出链接
+
+### 输出到路线推荐
+
+```markdown
+### 📍 路线地图预览（高德地图）
+- [去程段](https://ditu.amap.com/dir?...) — 乌鲁木齐→赛里木湖→博乐→伊宁→夏塔 | 1085km
+- [回程段](https://ditu.amap.com/dir?...) — 夏塔→新源→那拉提→唐布拉→独山子→奎屯→乌鲁木齐 | 1493km
+- ⚠️ 唐布拉→独山子需手动选择独库北段，高德默认绕行伊宁（719km/8.7h）
+```
+
 ## 路线搜索后的下一步
 
 路线搜索提取的骨架 → 交给"场景二 Phase 1: 路线推荐"做：
 1. 结合用户画像适配（亲子→亲子友好筛选、驾驶节奏→砍超标天数）
 2. 高德API校正里程/时长/过路费
 3. 快速酒店可行性检查（每个住宿点有无合格酒店）
-4. 输出2-3条候选路线供用户选择
+4. 提取小红书笔记图片URL（🖼️ 参考路线图）
+5. 生成高德地图路线预览URL（📍 路线地图预览，两段法）
+6. 调用远程MCP `maps_schema_personal_map` 生成专属地图链接（📱 行中导航）
+7. 输出2-3条候选路线供用户选择
+
+## 高德专属地图生成（远程MCP Server）
+
+用户选定路线后，调用远程MCP Server的 `maps_schema_personal_map` 工具生成专属地图。
+
+### 远程MCP Server
+
+- **端点**：`https://mcp.amap.com/mcp?key={AMAP_MAPS_API_KEY}`
+- **协议**：Streamable HTTP（MCP 2025-03-26）
+- **工具数**：15个（比npm包多3个：`maps_schema_personal_map` / `maps_schema_navi` / `maps_schema_take_taxi`）
+- **配置**：`~/.claude/settings.json` → `mcpServers.amap-maps.url`
+- **官方文档**：https://developer.amap.com/api/mcp-server/summary
+
+### maps_schema_personal_map 参数
+
+```json
+{
+  "orgName": "行程名称",
+  "lineList": [
+    {
+      "title": "D1-D2 起点→途经→终点",
+      "pointInfoList": [
+        {"name": "地点名", "lon": 87.617, "lat": 43.792, "poiId": "高德POI ID"}
+      ]
+    }
+  ]
+}
+```
+
+⚠️ **lineList渲染上限**：高德App端最多渲染约6条lineList，超过的行程天数在专属地图中不显示。**解决方案：合并相邻天数为行程阶段**，确保 `lineList.length ≤ 6`。
+
+**合并规则**：
+- 按行程阶段分组（去程/环线/回程），每组1-2天
+- 每条lineList的 `pointInfoList` 包含该阶段所有关键点位（起终点+住宿点+核心景点）
+- `title` 使用"D1-D2 起点→途经→终点"格式，保留天数信息
+
+**示例**（11天路线合并为6条lineList）：
+```json
+{
+  "orgName": "伊犁精华慢游线11天自驾游",
+  "lineList": [
+    {"title": "D1-D2 乌鲁木齐→独山子→赛里木湖", "pointInfoList": [...]},
+    {"title": "D3-D4 赛里木湖→博乐→伊宁", "pointInfoList": [...]},
+    {"title": "D5-D6 伊宁→昭苏→夏塔", "pointInfoList": [...]},
+    {"title": "D7-D8 昭苏→特克斯→新源", "pointInfoList": [...]},
+    {"title": "D9-D10 新源→那拉提→唐布拉", "pointInfoList": [...]},
+    {"title": "D11 唐布拉→独山子→乌鲁木齐", "pointInfoList": [...]}
+  ]
+}
+```
+
+返回：`amapuri://workInAmap/createWithToken?polymericId=mcp_xxx&from=MCP`
+
+此链接在手机浏览器中打开会唤起高德App，显示专属地图。
+
+### poiId获取
+
+通过远程MCP的 `maps_text_search` 或 `maps_around_search` 搜索POI获取poiId。如果只有坐标，用 `maps_geo` 地理编码后查找附近POI。
+
+### 专属地图 vs 路线预览URL
+
+| 维度 | 路线预览URL（ditu.amap.com/dir） | 专属地图（maps_schema_personal_map） |
+|------|------|------|
+| 用途 | 行前看路线走向 | 行中导航/打车/探店 |
+| 途经点 | ✅ 支持（indexed via格式） | ❌ 不需要（按天分组） |
+| 导航 | ❌ 只能看路线 | ✅ 一键导航到下一站 |
+| 打车 | ❌ | ✅ 一键打车 |
+| POI详情 | ❌ | ✅ 评分/电话/营业时间 |
+| 分享 | 浏览器URL | amapuri:// 链接（手机打开） |
 
 ## 常见坑
 
@@ -136,3 +341,10 @@ python scripts/xhs.py --show feed <feed_id> <xsec_token>
 3. **里程数据不精确** — 笔记中的"约300km"是大致估算，必须用高德API校正
 4. **亲子信息缺失** — 很多自驾游攻略不提亲子体验，需要额外搜"亲子"模板补充
 5. **路线过时** — 部分路线笔记是1-2年前的，路况可能已变化，需搜最新版验证
+6. **图片非路线图** — 小红书笔记前几张图片可能是风景照而非路线图，纯文本模型无法识别，接受概率性误差
+7. **高德途经点格式错误** — 必须用 `via[i][lnglat]` indexed 格式，其他格式（合并/pipe/vian）均不可用
+8. **高德季节性路段** — 独库公路等季节性道路高德无法自动规划，需标注⚠️让用户手动选择
+9. **高德环线回头路** — 起终点相同时高德可能走回头路，优先生成环线URL，显示不全再拆两段
+10. **npm包无专属地图** — `@amap/amap-maps-mcp-server@0.0.8`只有12个工具，专属地图功能只在远程MCP Server（Streamable HTTP）中可用
+11. **专属地图lineList上限** — 通过 `maps_schema_personal_map` API生成的专属地图，高德App端最多渲染5条lineList（实测6/7/11条只渲染前5条），行程超5天需合并相邻天数为行程阶段，且回程段必须与最后一段合并在同一条lineList中
+12. **专属地图路线连线不可自定义** — 高德专属地图的路线连线由API自动计算，季节性道路（如独库公路）默认绕行。专属地图定位为行中导航+探店，自定义路线展示靠H5行程页（AMap.Polyline）

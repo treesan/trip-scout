@@ -95,7 +95,6 @@ references/
   review-analysis.md     # 差评分析引擎
   xhs-hotel-research.md  # 小红书酒店口碑验证
   xhs-route-search.md    # 小红书路线搜索（自驾游专用）
-  xhs-research.md        # 小红书调研工作流(OpenCLI方案)
   trip-planning.md       # 通用行程规划方法论
   road-trip-planning.md  # 自驾游增量方法论
   dianping-research.md   # 大众点评调研工作流

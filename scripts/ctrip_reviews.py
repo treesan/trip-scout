@@ -1,177 +1,234 @@
-#!/usr/bin/env python3
 """
-trip-scout 携程酒店差评抓取与分析
+携程酒店差评抓取 - Playwright + API 双轨模式
 
-复用携程内部 REST API getHotelCommentList(源自 Z-an-K/ctrip-review-crawler, MIT),
-纯 requests 调用, 无浏览器, 能精准抓差评(filterInfo id:3)。
+封装 vendor/ctrip/ 模块，供 trip-scout 差评分析流程调用。
 
 用法:
+    # 扫码登录（首次使用）
+    python scripts/ctrip_reviews.py login
+    python scripts/ctrip_reviews.py login --show       # 弹浏览器窗口扫码
+
+    # 检查登录状态
+    python scripts/ctrip_reviews.py check-login
+
+    # 搜索酒店（获取hotelId）—— 问道API说"无该店"时的兜底方案
+    python scripts/ctrip_reviews.py search "乌鲁木齐福朋喜来登酒店"
+    python scripts/ctrip_reviews.py search "奎屯亚朵" --show
+    python scripts/ctrip_reviews.py search "赛里木湖 酒店" --limit 5
+
+    # 抓取差评分析
     python scripts/ctrip_reviews.py <hotelId> [--months 12] [--pages 20]
+    python scripts/ctrip_reviews.py <hotelId> --no-api  # 强制浏览器模式
+    python scripts/ctrip_reviews.py <hotelId> --show    # 显示浏览器窗口（调试用）
+
+    # 登出
+    python scripts/ctrip_reviews.py logout
 
 输出: JSON 到 stdout, 含分类统计+近期趋势+踩雷风险。
 hotelId 从携程酒店详情页 URL 获取(如 hotels.ctrip.com/hotels/detail?hotelid=XXXX)。
+也可通过 search 子命令搜索获取。
 """
 import argparse
 import json
 import sys
-from datetime import datetime, timedelta
+import os
 
-import requests
+# Windows GBK 终端兼容
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-API_URL = "https://m.ctrip.com/restapi/soa2/33278/getHotelCommentList"
-HEADERS = {
-    "Content-type": "application/json",
-    "Origin": "https://hotels.ctrip.com",
-    "Referer": "https://hotels.ctrip.com",
-    "accept": "*/*",
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/77.0.3865.120 Safari/537.36",
-}
-HEAD_BLOCK = {
-    "platform": "PC", "cver": "0", "cid": "", "bu": "HBU", "group": "ctrip",
-    "aid": "", "sid": "", "ouid": "", "locale": "zh-CN", "timezone": "8",
-    "currency": "CNY", "pageId": "102003", "vid": "", "guid": "", "isSSR": False,
-}
+# vendored 模块路径: 项目根/vendor
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "vendor"))
 
-# 差评分类关键词(复用 references/review-analysis.md)
-CATEGORIES = {
-    "成长性": ["装修味", "甲醛", "新开业", "磨合", "还在提升", "还在调试",
-              "设施还在完善", "员工培训", "刚开业", "开业才", "味道"],
-    "可接受": ["排队", "等待久", "价格贵", "性价比", "停车远", "停车不便",
-              "位置偏", "交通不便", "隔音", "房间小", "早餐一般", "wifi",
-              "空调声音", "水压"],
-    "本质性": ["脏", "卫生差", "有虫", "蟑螂", "老鼠", "异味", "态度差",
-              "态度恶劣", "服务差", "不处理", "推诿", "不安全", "门锁坏",
-              "消防", "安全隐患", "与实际不符", "欺诈", "强制消费", "涨价",
-              "设施损坏", "热水没有", "空调坏了", "电视坏了", "被子薄", "冷醒"],
-    "系统性": ["原来", "原名", "改名", "翻牌", "换管理", "管理混乱",
-              "员工流动", "换人", "挂大牌", "品牌标准", "加盟", "个体"],
-}
+from ctrip.login import check_login, login, logout
+from ctrip.reviews import fetch_and_analyze, search_hotel_id
 
 
-def fetch_comments(hotel_id: str, page_index: int, negative_only: bool = True):
-    """抓单页评论。negative_only=True 用差评筛选(id:3)。"""
-    filter_info = [{"id": 3, "filterType": 1}] if negative_only else [{"id": 4, "filterType": 1}]
-    payload = {
-        "hotelId": str(hotel_id), "pageIndex": page_index, "pageSize": 10,
-        "repeatComment": 1, "needStaticInfo": False,
-        "functionOptions": ["integratedTopComment"],
-        "filterInfo": filter_info, "orderBy": 1, "head": HEAD_BLOCK,
-    }
+def out(data):
+    print(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+def _search_hotels(query, headless=True, limit=10):
+    """搜索携程酒店，返回 hotelId 列表。
+
+    两种模式：
+    1. 精确搜索（酒店名）：调用 search_hotel_id，返回单个 hotelId
+    2. 模糊搜索（目的地+关键词）：浏览器模式搜索携程，返回多个结果
+    """
+    # 先尝试精确搜索（酒店名 → 单个hotelId）
     try:
-        r = requests.post(API_URL, json=payload, headers=HEADERS, timeout=20)
-        r.raise_for_status()
-        data = r.json().get("data", {})
-        return data.get("commentList", [])
+        hotel_id = search_hotel_id(query, client=None)
+        if hotel_id:
+            return {
+                "query": query,
+                "hotelId": hotel_id,
+                "hotelName": query,
+                "matchType": "exact",
+                "note": "精确匹配，可直接用于差评抓取",
+            }
+    except Exception:
+        pass  # 精确搜索失败，降级到模糊搜索
+
+    # 模糊搜索：打开携程酒店搜索页，提取搜索结果列表
+    from ctrip.client import CtripClient
+    import time as _time
+
+    client = CtripClient(headless=headless)
+    client.start()
+    try:
+        page = client.page
+        page.goto('https://hotels.ctrip.com/', wait_until='networkidle', timeout=20000)
+        _time.sleep(3)
+
+        # 在搜索框输入关键词
+        search_input = page.locator('#_allSearchKeyword')
+        search_input.click()
+        _time.sleep(0.5)
+        search_input.fill(query)
+        _time.sleep(3)
+
+        # 从下拉列表提取多个搜索结果
+        results = page.evaluate("""(limit) => {
+            const items = document.querySelectorAll('.search_list_hotel');
+            const out = [];
+            for (let i = 0; i < Math.min(items.length, limit); i++) {
+                const item = items[i];
+                const url = item.getAttribute('url') || '';
+                const word = item.getAttribute('word') || '';
+                const hotelIdMatch = url.match(/hotel\\/(\\d+)/) || url.match(/hotelId=(\\d+)/);
+                if (hotelIdMatch) {
+                    out.push({
+                        hotelId: hotelIdMatch[1],
+                        hotelName: word || url,
+                        url: url
+                    });
+                }
+            }
+            return out;
+        }""", limit)
+
+        return {
+            "query": query,
+            "matchType": "fuzzy",
+            "results": results,
+            "count": len(results) if results else 0,
+            "note": "模糊搜索结果，选择目标酒店后用 hotelId 抓取差评" if results else "未找到匹配酒店，尝试更精确的关键词",
+        }
     except Exception as e:
-        print(json.dumps({"error": f"page {page_index}: {e}"}, ensure_ascii=False), file=sys.stderr)
-        return []
-
-
-def classify(text: str, rating: float = None) -> str:
-    """把单条差评归类。命中哪类返回哪类, 多类命中按严重度高者优先。
-    rating≤1.5 的极低分默认归本质性(必有硬伤), 除非命中成长性。"""
-    if not text:
-        text = ""
-    # 先查成长性(装修味等, 即使低分也可能是新店磨合)
-    for kw in CATEGORIES["成长性"]:
-        if kw in text:
-            return "成长性"
-    # 系统性(加盟/翻牌/管理混乱)优先于本质性
-    for kw in CATEGORIES["系统性"]:
-        if kw in text:
-            return "系统性"
-    # 本质性
-    for kw in CATEGORIES["本质性"]:
-        if kw in text:
-            return "本质性"
-    # 极低分兜底: rating≤1.5 必有硬伤, 归本质性
-    if rating is not None and float(rating) <= 1.5:
-        return "本质性"
-    # 宽松匹配: 卫生/管理/服务+差/乱/塌
-    for kw in ["卫生一般", "卫生差", "管理乱", "管理一塌", "设施差", "服务差", "差到不行"]:
-        if kw in text:
-            return "本质性"
-    return "可接受"
-
-
-def analyze(hotel_id: str, months: int, max_pages: int):
-    cutoff = datetime.now() - timedelta(days=months * 30)
-    all_comments = []
-    for page in range(1, max_pages + 1):
-        cl = fetch_comments(hotel_id, page, negative_only=True)
-        if not cl:
-            break
-        all_comments.extend(cl)
-        # 早停: 若某页最早评论已超 cutoff, 不必再翻(但差评页按时间倒序, 继续翻拿更早的)
-        # 简单起见翻满 max_pages 或无数据停
-        if len(cl) < 10:
-            break
-
-    # 筛近 N 月 + 解析
-    recent = []
-    for c in all_comments:
-        date_str = (c.get("createDate") or "")[:10]  # YYYY-MM-DD
-        try:
-            d = datetime.strptime(date_str, "%Y-%m-%d")
-        except ValueError:
-            continue
-        if d >= cutoff:
-            recent.append({
-                "date": date_str,
-                "rating": c.get("rating"),
-                "content": (c.get("content") or "").strip(),
-                "category": classify(c.get("content") or "", c.get("rating")),
-            })
-
-    # 分类统计
-    cat_count = {c: 0 for c in CATEGORIES}
-    for r in recent:
-        cat_count[r["category"]] = cat_count.get(r["category"], 0) + 1
-    total = len(recent)
-
-    # 近3月趋势
-    three_mo_ago = datetime.now() - timedelta(days=90)
-    recent_3mo = sum(1 for r in recent if datetime.strptime(r["date"], "%Y-%m-%d") >= three_mo_ago)
-
-    # 踩雷风险
-    essential = cat_count.get("本质性", 0)
-    systemic = cat_count.get("系统性", 0)
-    if total == 0:
-        risk = "未知(无差评或抓取失败)"
-    elif (essential + systemic) / total > 0.5:
-        risk = "🔴高"
-    elif (essential + systemic) / total > 0.2:
-        risk = "🟡中"
-    else:
-        risk = "🟢低"
-
-    return {
-        "hotelId": hotel_id,
-        "negativeReviewsInPeriod": total,
-        "periodMonths": months,
-        "categoryBreakdown": cat_count,
-        "categoryPercent": {k: round(v / total * 100, 1) for k, v in cat_count.items()} if total else {},
-        "last3MonthsCount": recent_3mo,
-        "trendNote": "近3个月差评突增=近期恶化⚠️" if recent_3mo > total * 0.4 and total >= 5 else "近3个月差评占比正常",
-        "踩雷风险": risk,
-        "sampleReviews": [
-            {"date": r["date"], "rating": r["rating"], "category": r["category"],
-             "content": r["content"][:200]}
-            for r in sorted(recent, key=lambda x: x["date"], reverse=True)[:5]
-        ],
-    }
+        return {"query": query, "error": str(e), "matchType": "fuzzy"}
+    finally:
+        client.close()
 
 
 def main():
-    p = argparse.ArgumentParser(description="携程酒店差评抓取分析")
+    # 手动路由: 第一个参数如果是已知子命令则路由，否则当作 hotelId
+    SUBCOMMANDS = {"login", "check-login", "logout", "search"}
+
+    args = sys.argv[1:]
+    if not args:
+        _print_help()
+        return 1
+
+    first = args[0]
+
+    # 子命令路由
+    if first == "login":
+        p = argparse.ArgumentParser(prog="ctrip_reviews.py login", description="扫码登录携程")
+        p.add_argument("--show", action="store_true", help="弹浏览器窗口扫码(推荐首次使用)")
+        p.add_argument("--timeout", type=int, default=120, help="扫码超时秒数(默认120)")
+        ns = p.parse_args(args[1:])
+        result = login(headless=not ns.show, timeout=ns.timeout)
+        out(result)
+        return 0 if result.get("status") == "logged_in" else 1
+
+    if first == "check-login":
+        ok, username = check_login()
+        out({"is_logged_in": ok, "username": username})
+        return 0 if ok else 1
+
+    if first == "logout":
+        result = logout()
+        out(result)
+        return 0
+
+    if first == "search":
+        p = argparse.ArgumentParser(prog="ctrip_reviews.py search", description="搜索携程酒店获取hotelId")
+        p.add_argument("query", help="酒店名称或搜索关键词(如'乌鲁木齐福朋喜来登酒店'或'赛里木湖 酒店')")
+        p.add_argument("--show", action="store_true", help="显示浏览器窗口")
+        p.add_argument("--limit", type=int, default=10, help="最多返回结果数(默认10)")
+        ns = p.parse_args(args[1:])
+
+        result = _search_hotels(query=ns.query, headless=not ns.show, limit=ns.limit)
+        out(result)
+        return 0 if result.get("hotelId") or result.get("results") else 1
+
+    if first in ("--help", "-h"):
+        _print_help()
+        return 0
+
+    # 默认: 差评分析 — first 是 hotelId
+    p = argparse.ArgumentParser(
+        description="携程酒店差评抓取分析 (Playwright + API 双轨)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  python scripts/ctrip_reviews.py login             # 扫码登录携程
+  python scripts/ctrip_reviews.py login --show      # 弹浏览器窗口扫码
+  python scripts/ctrip_reviews.py check-login       # 检查登录状态
+  python scripts/ctrip_reviews.py search "乌鲁木齐福朋喜来登酒店"  # 搜索酒店获取hotelId
+  python scripts/ctrip_reviews.py search "赛里木湖 酒店" --limit 5  # 模糊搜索
+  python scripts/ctrip_reviews.py 17509632          # 抓取酒店差评(默认API优先)
+  python scripts/ctrip_reviews.py 17509632 --pages 30  # 抓取更多页
+  python scripts/ctrip_reviews.py 17509632 --no-api # 强制浏览器模式
+  python scripts/ctrip_reviews.py 17509632 --show   # 显示浏览器窗口(调试)
+  python scripts/ctrip_reviews.py logout            # 清除登录状态
+        """,
+    )
     p.add_argument("hotelId", help="携程酒店ID")
     p.add_argument("--months", type=int, default=12, help="分析近N个月(默认12)")
     p.add_argument("--pages", type=int, default=20, help="最多翻页数(默认20)")
-    args = p.parse_args()
-    result = analyze(args.hotelId, args.months, args.pages)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    p.add_argument("--no-api", action="store_true", help="强制浏览器模式，不尝试API")
+    p.add_argument("--show", action="store_true", help="显示浏览器窗口(调试用)")
+    p.add_argument("--all", action="store_true", help="抓取全部评论(不仅差评)")
+
+    ns = p.parse_args(args)
+
+    result = fetch_and_analyze(
+        hotel_id=ns.hotelId,
+        months=ns.months,
+        max_pages=ns.pages,
+        negative_only=not ns.all,
+        headless=not ns.show,
+        prefer_api=not ns.no_api,
+    )
+    out(result)
+
+    # 如果抓取失败，返回非零退出码
+    if "error" in result:
+        return 1
     return 0
+
+
+def _print_help():
+    print("""携程酒店差评抓取分析 (Playwright + API 双轨)
+
+用法:
+  python scripts/ctrip_reviews.py login               # 扫码登录携程
+  python scripts/ctrip_reviews.py login --show        # 弹浏览器窗口扫码
+  python scripts/ctrip_reviews.py check-login         # 检查登录状态
+  python scripts/ctrip_reviews.py search "酒店名"      # 搜索酒店获取hotelId
+  python scripts/ctrip_reviews.py search "城市 关键词" --limit 5  # 模糊搜索
+  python scripts/ctrip_reviews.py <hotelId>           # 抓取酒店差评(默认API优先)
+  python scripts/ctrip_reviews.py <hotelId> --pages 30
+  python scripts/ctrip_reviews.py <hotelId> --no-api  # 强制浏览器模式
+  python scripts/ctrip_reviews.py <hotelId> --show    # 显示浏览器窗口(调试)
+  python scripts/ctrip_reviews.py logout              # 清除登录状态
+
+hotelId 获取方式:
+  1. search 子命令: python scripts/ctrip_reviews.py search "酒店全名"
+  2. 携程酒店详情页URL: hotels.ctrip.com/hotels/detail?hotelid=XXXX
+
+首次使用需先登录: python scripts/ctrip_reviews.py login --show""")
 
 
 if __name__ == "__main__":

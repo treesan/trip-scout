@@ -89,13 +89,92 @@
 ### 获取路径(按优先级)
 
 1. **脚本抓取**(主, 推荐): `python scripts/ctrip_reviews.py <hotelId> --months 12 --pages 20`
-   - 复用携程内部 REST API `getHotelCommentList`(源自 [Z-an-K/ctrip-review-crawler](https://github.com/Z-an-K/ctrip-review-crawler), MIT), 纯 requests 无浏览器。
-   - `filterInfo id:3` 精准抓差评, 按时间排序, 含 rating/createDate/content。
-   - 脚本自动分类(成长性/可接受/本质性/系统性)+统计占比+近3月趋势+踩雷风险。
-   - hotelId 从携程酒店详情页 URL 取(`hotelid=XXXX`)。
+   - **Playwright + API 双轨模式**：API优先(快) -> 浏览器降级(稳)
+   - 需要先登录携程：`python scripts/ctrip_reviews.py login --show`（首次扫码，Cookie自动持久化，路径由脚本管理）
+   - 检查登录态：`python scripts/ctrip_reviews.py check-login`
+   - API模式：从浏览器Cookie提取后调用移动端REST API(`soa2/34308/getHotelCommentInfo`)，批量抓取速度快
+   - 浏览器模式：Playwright操控真实浏览器访问携程评论页，逐页提取，稳定但较慢
+   - 脚本自动分类(成长性/可接受/本质性/系统性)+统计占比+近3月趋势+踩雷风险
+   - hotelId 从携程酒店详情页 URL 取(`hotelid=XXXX`)
+   - ⚠️ **首次使用必须先登录**，否则API返回空结果(携程对无Cookie请求静默返回totalCount=0)
+
+#### ⚠️ API模式 vs 浏览器模式的差评差异(实战经验, 2026-07-08验证)
+
+**关键发现：携程"差评"的定义 ≠ 评分≤3。** 携程用自有NLP分类判定差评，API无法复现此判定。
+
+| 模式 | 差评来源 | 准确性 | 速度 | 适用场景 |
+|------|---------|--------|------|----------|
+| API | 抓全部评论->用评分≤3过滤 | ❌ **严重漏差评** | 快(~10s/200条) | 差评率统计(全部评论+评分) |
+| 浏览器 | 点击携程"差评"标签->抓标签下评论 | ✅ **精确** | 慢(~60s/8条) | 差评内容分析(分类/趋势) |
+
+**实测对比（赛里木湖亚朵见野, hotelId=133232577）**:
+- 携程差评标签显示: **差评(11)**
+- API模式(评分≤3过滤): 仅抓到 **1条** (漏90%)
+- 浏览器模式(差评标签): 抓到 **8条** (页面最大显示数)
+
+**正确策略：双轨并用**
+```
+1. API模式跑一遍 -> 拿到总评论数+评分分布+差评率(粗略)
+2. 浏览器模式跑一遍 -> 拿到差评标签下的精确差评(用于分类分析)
+3. 以浏览器模式的差评做分类/趋势/踩雷风险判断
+```
+
+**脚本参数**:
+- `python scripts/ctrip_reviews.py <hotelId>` -> 默认API优先, 失败降级浏览器
+- `python scripts/ctrip_reviews.py <hotelId> --no-api` -> 强制浏览器模式(差评精确, 推荐)
+- `python scripts/ctrip_reviews.py <hotelId> --pages 20` -> API模式翻20页
+
+#### hotelId搜索正确方法(实战经验)
+
+**❌ 错误方式**：URL拼接keyword
+```
+hotels.ctrip.com/hotels/list?keyword=奎屯亚朵  -> 携程默认显示"安庆"酒店(BUG)
+```
+
+**✅ 正确方式**：全局搜索框 + 下拉列表url属性
+```
+1. 打开 https://hotels.ctrip.com/
+2. 在顶部全局搜索框 #_allSearchKeyword 输入酒店全名
+3. 下拉列表项 .search_list_hotel 的 url 属性含hotelId:
+   url="http://hotels.ctrip.com/hotel/132338651.html?cityid=39"
+4. 正则 /hotel/(\d+)/ 提取hotelId
+```
+
+**脚本内置**：`from ctrip.reviews import search_hotel_id; search_hotel_id("酒店全名")` 自动完成上述流程。
+
+**CLI方式（推荐）**：
+```bash
+# 精确搜索：输入酒店全名，返回hotelId
+python scripts/ctrip_reviews.py search "乌鲁木齐城投万达锦华酒店"
+
+# 模糊搜索：输入目的地+关键词，返回多个结果
+python scripts/ctrip_reviews.py search "赛里木湖 酒店" --limit 5
+
+# 问道说"无该店"时的兜底：用search命令验证酒店是否存在
+python scripts/ctrip_reviews.py search "伊宁绿发洲际酒店"
+```
+
+**注意**：搜索时输入**酒店全名**（如"乌鲁木齐城投万达锦华酒店"），不要简写。全局搜索框不需要先输目的地城市，直接输酒店全名即可。
+
+#### 差评数量不一致说明
+
+携程差评标签显示的数字（如"差评(11)"）与页面实际显示的评论数（8条）可能不一致。原因：标签数字可能包含已删除/历史评论。**以实际抓取到的为准**，标签数字仅作参考。无分页器时（差评<10条），页面显示的就是全部可抓取的差评。
+
 2. **携程问道API**(补充): 问"近一年差评分类、典型问题"拿摘要, 与脚本结果交叉。
    - ⚠️ 问道只给代表性摘要, 可能漏差评; 会话常被锁定。
-3. **opencli-browser**(兜底): 脚本失败/被风控时, 登 ctrip.com 手动翻页。
+   - ⚠️ **绝不能只用问道做差评分析**--违反强制规则，必须先跑脚本
+3. **脚本完全不可用时的降级**:
+   - 登录态过期 -> 重新 `python scripts/ctrip_reviews.py login --show`
+   - 被风控/验证码 -> `python scripts/ctrip_reviews.py <hotelId> --show`（显示浏览器窗口手动过验证码）
+   - 全部失败 -> 只用问道摘要，**必须在输出中标注"⚠️ 未量化分析(脚本不可用)"**
+
+### 强制执行规则(防AI偷懒)
+
+1. **每个候选酒店的差评分析，必须先调用 `python scripts/ctrip_reviews.py`**
+2. 脚本调用失败时，**必须在输出中标注原因**（如"⚠️ 未量化分析：脚本被风控/API返回空"）
+3. **绝不能跳过脚本直接用问道摘要**——问道是补充，不是替代
+4. 所有候选酒店的开业时间**必须逐一搜索**，不能选择性遗漏（如搜了万达文华2016但漏搜希尔顿2015）
+5. 脚本返回数据为空时 → 检查登录态(`check-login`) → 重新登录 → 重试
 
 ### 两边都负面时的决策
 

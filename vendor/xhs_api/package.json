@@ -1,0 +1,10 @@
+{
+  "name": "xhs-api-vendor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "小红书 API 签名所需 Node.js 依赖 (PyExecJS 底层调用)",
+  "dependencies": {
+    "crypto-js": "^4.2.0",
+    "jsdom": "^26.0.0"
+  }
+}

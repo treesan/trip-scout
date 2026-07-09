@@ -5,55 +5,70 @@
 携程/飞猪圈出 TOP3 待选后, 用小红书**真实用户口碑**交叉验证, 降踩雷风险;
 顺带从笔记里提取游玩内容, 反哺旅行攻略, 为每日行程规划打底。
 
-> 先读 [`../../../trip-map-builder/references/xhs-research.md`](../../../trip-map-builder/references/xhs-research.md)
-> ——那里有验证过的小红书调研方法论(搜索结果页路由、API 拦截、DOM 提取、筛选标准)。
-> 本文件只补**酒店口碑专属**的部分, 不重复通用流程。
+## 主路径: 项目内置 scripts/xhs.py (纯 API 版本, 推荐)
 
-## 主路径: 项目内置 scripts/xhs.py (推荐, 开箱即用)
-
-小红书能力已 vendored 进 `vendor/xiaohongshu/`(源自 DeliciousBuding/xiaohongshu-skill, MIT),
-仅内化酒店口碑验证所需核心模块。通过 `scripts/xhs.py` 调用, 内置反爬(频率控制+真人延迟+验证码检测):
+小红书能力已 vendored 进 `vendor/xhs_api/`(源自 [Spider_XHS](https://github.com/cv-cat/Spider_XHS), MIT),
+采用**纯 HTTP API 方案**（逆向签名算法，直接 API 调用），替代原有 Playwright 浏览器自动化方案。
+优势：无浏览器自动化 → 无 CDP 痕迹 → 被风控检测风险低。
 
 | 能力 | 命令 | 解决的问题 |
 |------|------|-----------|
 | 登录态检测 | `python scripts/xhs.py check-login` | 不用手动判断登录是否失效 |
-| 扫码登录 | `python scripts/xhs.py qrcode --show` | 首次登录或失效重登 |
-| 搜索(带筛选) | `python scripts/xhs.py search "{关键词}" --sort-by=最新 --limit=10` | 返回结构化JSON(id/xsec_token/标题/点赞) |
-| 详情提取 | `python scripts/xhs.py feed <feed_id> <xsec_token>` | 自动带xsec_token, 从`__INITIAL_STATE__`取正文, 避开300031 |
+| QR码登录 | `python scripts/xhs.py qrcode` | 纯API登录，终端显示二维码 |
+| 手动设置cookie | `python scripts/xhs.py set-cookie --cookie "a1=...;web_session=..."` | 从浏览器DevTools复制cookie |
+| 搜索(带筛选) | `python scripts/xhs.py search "{关键词}" --sort-by=最新 --limit=10` | 返回结构化JSON(id/标题/点赞) |
+| 详情提取 | `python scripts/xhs.py feed <note_url_or_id>` | 用笔记ID或URL获取正文/图片/评论 |
 
 前置(clone 后一次性):
 ```bash
-pip install -r requirements.txt && playwright install chromium
-python scripts/xhs.py qrcode --show   # 首次扫码登录, cookie 存 ~/.xiaohongshu/cookies.json
+pip install -r requirements.txt
+cd vendor/xhs_api && npm install   # 签名JS的Node.js依赖
+python scripts/xhs.py qrcode      # 首次QR码登录(或用 set-cookie 手动设置)
 ```
 
-调用示例(⚠️ 必须 `--show` 有头模式, 见下文坑):
+调用示例:
 ```bash
-# 1. 确认登录(失效则 python scripts/xhs.py --show qrcode)
+# 1. 确认登录(失效则 python scripts/xhs.py qrcode 或 set-cookie)
 python scripts/xhs.py check-login
-# 2. 搜酒店口碑(--show 必须, 无头会导航超时)
-python scripts/xhs.py --show search "那拉提英迪格 避雷" --limit 10
-# 3. 取最相关的 feed_id+xsec_token 读正文
-python scripts/xhs.py --show feed <id> <token>
+# 2. 搜酒店口碑
+python scripts/xhs.py search "那拉提英迪格 避雷" --limit 10
+# 3. 取最相关的笔记读正文
+python scripts/xhs.py feed <note_id>
 ```
 
-### ⚠️ 两个实战坑(2026 验证, 必读)
+### ⚠️ 与旧版 Playwright 方案的关键区别
 
-**坑1: 无头模式导航超时 → 必须 `--show` 有头**
-- 现象: `python scripts/xhs.py search ...`(无 --show) 报 `Page.goto: Timeout 120000ms exceeded, waiting until domcontentloaded`。
-- 原因: 小红书搜索页有持续请求, `domcontentloaded`/`networkidle` 永不达成; 无头模式更易触发风控延迟。
-- 解决: **所有 search/feed 命令都加 `--show`**(`--show` 是全局参数, 放子命令前: `python scripts/xhs.py --show search ...`)。有头模式弹窗跑, 已实测稳定。
+| 维度 | 旧版 (Playwright) | 新版 (纯 API) |
+|------|-------------------|---------------|
+| 访问方式 | 浏览器自动化 | 直接 HTTP API 调用 |
+| 被检测风险 | 高（CDP/自动化指纹） | 低（无浏览器指纹） |
+| `--show` 参数 | 必须（无头超时） | 不需要（无浏览器） |
+| feed 命令参数 | `feed <feed_id> <xsec_token>` | `feed <note_url_or_id>` |
+| 速度 | 慢（需渲染页面） | 快（纯 API 响应） |
+| 依赖 | Playwright + Chromium | PyExecJS + Node.js |
 
-**坑2: feed 返回的正文在 `d['note']['desc']`, 不在顶层**
-- 现象: `feed` 命令返回的 JSON, 顶层 `title`/`desc` 是空, 误以为提取失败。
-- 真实结构: `{"note": {"title": ..., "desc": <正文>, "user": {"nickname": ...}, "interactInfo": {"likedCount": ...}}, "comments": {...}, "widgets": [...]}`
-- 解析: 取 `d['note']['desc']`(正文)、`d['note']['title']`、`d['note']['user']['nickname']`、`d['note']['interactInfo']['likedCount']`。
+### ⚠️ 旧版坑已解决
+
+旧版"坑1: 无头模式导航超时"和"坑2: feed正文在note.desc"在纯API版本中不存在：
+- 纯API无需浏览器，无导航超时问题
+- feed命令直接返回结构化JSON，`desc`在顶层
+
+## 小红书不可用时的降级策略
+
+小红书不可用（cookie 失效/账号受限/API 签名失效）时，**跳过小红书口碑验证步骤**，以携程差评为主判据。
+
+判断方式：`python scripts/xhs.py check-login` 返回 `is_logged_in: false`
+
+降级说明：
+- 酒店搜索输出中省略"📖 小红书口碑验证"部分
+- 携程差评分析升级为主判据（不再只是"交叉验证"）
+- 需在输出中标注"⚠️ 小红书验证不可用，以携程差评为唯一口碑来源"
 
 ## 备选路(scripts/xhs.py 不可用时)
 
 | 优先级 | 通道 | 何时用 |
 |--------|------|--------|
-| 🥈 | chrome-devtools-mcp | playwright未装/验证码卡住。原生MCP, 需手动处理登录态和token |
+| 🥈 | chrome-devtools-mcp | 纯API不可用/验证码卡住。原生MCP, 需手动处理登录态和token |
 | 🥉 | OpenCLI CDPBridge 直连 | 上两者都不可用, 开 9223 调试 Chrome |
 
 **前置(三条路都要):** 小红书需真实登录态。2026 实测**连搜索列表都要登录**("登录后查看搜索结果"),
@@ -107,7 +122,7 @@ python scripts/xhs.py --show feed <id> <token>
 - 关键词堆砌:"强烈推荐""必住""XX同款""来了一定要住"且无个人体验
 - 笔记带"赞助/推广/合作"标识
 
-### 真实信号 → 保留(复用 xhs-research.md 标准)
+### 真实信号 → 保留
 
 - 店名/地址明确, 有自己体验
 - 提到**具体问题**(排队时长、隔音、味道、服务响应)——这种细节软文不爱写

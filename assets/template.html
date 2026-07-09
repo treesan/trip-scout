@@ -7,8 +7,6 @@
 <meta name="description" content="<!-- REPLACE: Trip Description -->">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 /* ═══════════════════════════════════════════
    Design System — edit :root to change theme
@@ -56,8 +54,39 @@ a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 /* ── Map ── */
-#map { width: 100%; height: 40vh; min-height: 280px; position: sticky; top: 0; z-index: 100; }
+#map { width: 100%; height: 500px; position: sticky; top: 0; z-index: 100; }
+
+/* ── Personal Map Button ── */
+.personal-map-btn {
+  position: absolute; top: 12px; left: 12px; z-index: 120;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 18px; border-radius: 980px; border: none;
+  background: linear-gradient(135deg, #0071e3, #0077ed);
+  color: #fff; font-size: 14px; font-weight: 600;
+  box-shadow: 0 4px 14px rgba(0,113,227,.35);
+  cursor: pointer; text-decoration: none !important;
+  transition: transform .2s, box-shadow .2s;
+  letter-spacing: -0.01em;
+}
+.personal-map-btn:active { transform: scale(.96); box-shadow: 0 2px 8px rgba(0,113,227,.25); }
+.personal-map-btn.hidden { display: none; }
+
+/* ── Route Legend ── */
+.route-legend {
+  position: absolute; bottom: 24px; right: 12px; z-index: 120;
+  background: rgba(255,255,255,.92); backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  border-radius: var(--radius-md); padding: 10px 14px;
+  box-shadow: var(--shadow-md); font-size: 12px; line-height: 1.8;
+  max-width: 180px;
+}
+.route-legend .legend-title { font-weight: 700; color: var(--text-primary); margin-bottom: 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .02em; }
+.route-legend .legend-row { display: flex; align-items: center; gap: 8px; }
+.route-legend .legend-line { width: 20px; height: 3px; border-radius: 2px; }
+
+/* ── Locate button ── */
 .locate-btn {
+  position: absolute; bottom: 24px; left: 12px; z-index: 120;
   width: 36px; height: 36px; border-radius: 8px;
   background: rgba(255,255,255,.92); backdrop-filter: blur(8px);
   border: none; box-shadow: 0 1px 4px rgba(0,0,0,.18);
@@ -79,7 +108,7 @@ a:hover { text-decoration: underline; }
 .tabs {
   display: flex; gap: 6px; padding: 12px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch;
   background: rgba(255,255,255,.85); -webkit-backdrop-filter: saturate(180%) blur(20px);
-  backdrop-filter: saturate(180%) blur(20px); position: sticky; top: 40vh; z-index: 99;
+  backdrop-filter: saturate(180%) blur(20px); position: sticky; top: 500px; z-index: 99;
   border-bottom: .5px solid var(--separator); scrollbar-width: none;
 }
 .tabs::-webkit-scrollbar { display: none; }
@@ -224,14 +253,15 @@ a:hover { text-decoration: underline; }
 .legend-item { display: flex; align-items: center; gap: 5px; }
 .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
 
-/* ── Leaflet overrides ── */
-.leaflet-popup-content-wrapper { border-radius: var(--radius-md) !important; box-shadow: var(--shadow-lg) !important; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif !important; }
-.leaflet-popup-content { font-size: 14px !important; line-height: 1.5 !important; margin: 12px 14px !important; }
-.leaflet-popup-content a { color: var(--accent) !important; }
-.leaflet-popup-tip { background: #fff !important; }
-.leaflet-control-zoom a { width: 34px !important; height: 34px !important; line-height: 34px !important; font-size: 16px !important; border-radius: 10px !important; background: rgba(255,255,255,.85) !important; -webkit-backdrop-filter: blur(10px) !important; backdrop-filter: blur(10px) !important; border: .5px solid var(--separator) !important; color: var(--text-primary) !important; }
-.leaflet-control-zoom { border-radius: 12px !important; overflow: hidden; box-shadow: var(--shadow-md) !important; border: none !important; }
-.leaflet-control-attribution { font-size: 9px !important; opacity: .5; }
+/* ── AMap InfoWindow overrides ── */
+.amap-info-content {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", "Arial", sans-serif !important;
+  font-size: 14px !important; line-height: 1.5 !important;
+  padding: 12px 14px !important; min-width: 160px;
+}
+.amap-info-content b { font-size: 15px; }
+.amap-info-content a { color: var(--accent) !important; }
+.amap-info-sharp { bottom: -6px !important; }
 </style>
 </head>
 <body>
@@ -246,6 +276,8 @@ a:hover { text-decoration: underline; }
 // ╚══════════════════════════════════════════════════════════════╝
 
 const HOTEL = { name: 'Hotel Name', lat: 0, lng: 0 };
+
+const PERSONAL_MAP_URI = '<!-- REPLACE: Personal Map URI -->';
 
 const DAYS = [
   { id: 0, label: '总览', color: '#0071e3', locations: [] },
@@ -305,84 +337,303 @@ function overviewContent() {
 // ║  ENGINE — Do not modify below unless customizing behavior   ║
 // ╚══════════════════════════════════════════════════════════════╝
 
-const map = L.map('map', { center: [HOTEL.lat || 35.69, HOTEL.lng || 139.74], zoom: 12, zoomControl: false, attributionControl: true });
-L.control.zoom({ position: 'topright' }).addTo(map);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
+/* ── AMap JSAPI 2.0 Loader ── */
+window._AMapSecurityConfig = {
+  securityJsCode: '<!-- REPLACE: AMAP_SECURITY_JS_CODE -->',
+};
 
-/* ── Geolocation ── */
-const LocateControl = L.Control.extend({
-  options: { position: 'bottomright' },
-  onAdd() {
-    const btn = L.DomUtil.create('button', 'locate-btn');
-    btn.innerHTML = '📍';
-    btn.title = '我的位置';
-    L.DomEvent.disableClickPropagation(btn);
-    btn.addEventListener('click', () => {
-      btn.classList.add('active');
-      map.locate({ setView: true, maxZoom: 15 });
+var map, geolocation;
+var markers = [], polylines = [], infoWindows = [];
+var locMarker = null;
+
+function initMap() {
+  map = new AMap.Map('map', {
+    zoom: 9,
+    center: [HOTEL.lng || 104.065735, HOTEL.lat || 30.659462],
+    viewMode: '3D',
+    pitch: 30,
+    resizeEnable: true,
+  });
+
+  // Geolocation plugin
+  AMap.plugin('AMap.Geolocation', function() {
+    geolocation = new AMap.Geolocation({
+      enableHighAccuracy: true,
+      timeout: 10000,
+      zoomToAccuracy: true,
+      showButton: false,
+      showMarker: false,
+      showCircle: false,
     });
-    this._btn = btn;
-    return btn;
-  }
-});
-new LocateControl().addTo(map);
-let locMarker, locCircle;
-map.on('locationfound', e => {
-  const r = e.accuracy / 2;
-  if (locMarker) { locMarker.setLatLng(e.latlng); locCircle.setLatLng(e.latlng).setRadius(r); }
-  else {
-    locMarker = L.marker(e.latlng, {
-      icon: L.divIcon({ className:'', html:'<div style="width:14px;height:14px;border-radius:50%;background:#007aff;border:2.5px solid #fff;box-shadow:0 0 6px rgba(0,122,255,.5)"></div><div class="loc-pulse" style="position:absolute;top:0;left:0"></div>', iconSize:[14,14], iconAnchor:[7,7] }),
-      zIndexOffset: 2000
-    }).addTo(map);
-    locCircle = L.circle(e.latlng, { radius: r, color: '#007aff', fillColor: '#007aff', fillOpacity: .08, weight: 1 }).addTo(map);
-  }
-});
-map.on('locationerror', () => {});
+    map.addControl(geolocation);
+  });
 
-function icon(color, emoji) {
-  return L.divIcon({ className: '', html: `<div style="width:28px;height:28px;border-radius:50%;background:${color};border:2.5px solid #fff;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.18)">${emoji||''}</div>`, iconSize: [28,28], iconAnchor: [14,14], popupAnchor: [0,-16] });
+  // Locate button
+  var locateBtn = document.createElement('button');
+  locateBtn.className = 'locate-btn';
+  locateBtn.innerHTML = '📍';
+  locateBtn.title = '我的位置';
+  locateBtn.addEventListener('click', function() {
+    locateBtn.classList.add('active');
+    if (geolocation) {
+      geolocation.getCurrentPosition(function(status, result) {
+        if (status === 'complete') {
+          var pos = [result.position.lng, result.position.lat];
+          if (locMarker) {
+            locMarker.setPosition(pos);
+          } else {
+            locMarker = new AMap.Marker({
+              position: pos,
+              content: '<div style="width:14px;height:14px;border-radius:50%;background:#007aff;border:2.5px solid #fff;box-shadow:0 0 6px rgba(0,122,255,.5);position:relative;"><div class="loc-pulse" style="position:absolute;top:0;left:0;"></div></div>',
+              offset: new AMap.Pixel(-7, -7),
+              map: map,
+              zIndex: 2000,
+            });
+          }
+          map.setCenter(pos);
+          map.setZoom(15);
+        }
+      });
+    }
+  });
+  map.getContainer().appendChild(locateBtn);
+
+  // Personal Map button
+  var pmBtn = document.createElement('a');
+  pmBtn.className = 'personal-map-btn' + (PERSONAL_MAP_URI && PERSONAL_MAP_URI.indexOf('<!-- REPLACE') === -1 ? '' : ' hidden');
+  pmBtn.innerHTML = '📍 专属地图';
+  pmBtn.href = PERSONAL_MAP_URI;
+  pmBtn.target = '_blank';
+  map.getContainer().appendChild(pmBtn);
+
+  // Route legend
+  var legendEl = document.createElement('div');
+  legendEl.className = 'route-legend';
+  legendEl.id = 'route-legend';
+  legendEl.style.display = 'none';
+  map.getContainer().appendChild(legendEl);
+
+  // Hotel marker
+  if (HOTEL.lat) {
+    var hotelMarker = new AMap.Marker({
+      position: [HOTEL.lng, HOTEL.lat],
+      content: createMarkerContent('#ff9500', '🏨'),
+      offset: new AMap.Pixel(-14, -14),
+      map: map,
+      zIndex: 110,
+    });
+    var hotelInfo = new AMap.InfoWindow({
+      content: '<b>' + HOTEL.name + '</b>',
+      offset: new AMap.Pixel(0, -20),
+      closeWhenClickMap: true,
+    });
+    hotelMarker.on('click', function() {
+      hotelInfo.open(map, hotelMarker.getPosition());
+    });
+    markers.push(hotelMarker);
+  }
+
+  // Calculate center from all POI coordinates
+  var allCoords = [];
+  DAYS.forEach(function(d) {
+    d.locations.forEach(function(l) {
+      if (l.lat && l.lng) allCoords.push([l.lng, l.lat]);
+    });
+  });
+  if (HOTEL.lat) allCoords.push([HOTEL.lng, HOTEL.lat]);
+  if (allCoords.length > 0) {
+    map.setFitView(null, false, [60, 60, 60, 60]);
+  }
+
+  // Show initial overview
+  showDay(0);
 }
 
-if (HOTEL.lat) L.marker([HOTEL.lat, HOTEL.lng], { icon: icon('#ff9500','🏨'), zIndexOffset: 1000 }).addTo(map).bindPopup(`<b>${HOTEL.name}</b>`);
+function createMarkerContent(color, emoji) {
+  return '<div style="width:28px;height:28px;border-radius:50%;background:' + color + ';border:2.5px solid #fff;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.18);">' + (emoji || '') + '</div>';
+}
 
-let markers = [], polylines = [];
-const emojis = { food:'🍽️', spot:'📍', hotel:'🏨', transport:'🚃', drink:'🍺', 'road-trip':'🚗' };
+var emojis = { food: '🍽️', spot: '📍', hotel: '🏨', transport: '🚃', drink: '🍺', 'road-trip': '🚗' };
 
-function clearMap() { markers.forEach(m=>map.removeLayer(m)); polylines.forEach(p=>map.removeLayer(p)); markers=[]; polylines=[]; }
+function clearMap() {
+  markers.forEach(function(m) { map.remove(m); });
+  polylines.forEach(function(p) { map.remove(p); });
+  infoWindows.forEach(function(w) { w.close(); });
+  markers = [];
+  polylines = [];
+  infoWindows = [];
+}
+
+function updateLegend(dayIdx) {
+  var legendEl = document.getElementById('route-legend');
+  if (!legendEl) return;
+
+  if (dayIdx === 0) {
+    // Overview: show all day colors
+    var html = '<div class="legend-title">路线</div>';
+    DAYS.slice(1).forEach(function(d) {
+      html += '<div class="legend-row"><div class="legend-line" style="background:' + d.color + '"></div>' + d.label + '</div>';
+    });
+    legendEl.innerHTML = html;
+    legendEl.style.display = DAYS.length > 2 ? '' : 'none';
+  } else {
+    var day = DAYS.find(function(d) { return d.id === dayIdx; });
+    if (!day) { legendEl.style.display = 'none'; return; }
+    var hasRoadTrip = day.locations.some(function(l) { return l.type === 'road-trip'; });
+    if (hasRoadTrip) {
+      legendEl.innerHTML = '<div class="legend-title">路线</div>' +
+        '<div class="legend-row"><div class="legend-line" style="background:' + day.color + '"></div>自驾路线</div>';
+      legendEl.style.display = '';
+    } else {
+      legendEl.style.display = 'none';
+    }
+  }
+}
 
 function showDay(idx) {
   clearMap();
+  updateLegend(idx);
+
   if (idx === 0) {
-    const pts = [];
-    DAYS.forEach(d => d.locations.forEach(l => { if(l.lat) pts.push([l.lat,l.lng]); }));
-    if(pts.length) map.fitBounds(pts, {padding:[30,30]});
-    DAYS.slice(1).forEach(d => {
-      d.locations.filter(l=>l.time!=='—').forEach(l => {
-        const m = L.circleMarker([l.lat,l.lng], { radius:4, fillColor:d.color, color:'#fff', weight:1.5, fillOpacity:.9 }).addTo(map).bindPopup(`<b>${l.name}</b><br><span style="color:#86868b">${d.label}</span>`);
+    // Overview: small circle markers for all days
+    var allMarkers = [];
+    DAYS.slice(1).forEach(function(d) {
+      d.locations.filter(function(l) { return l.time !== '—'; }).forEach(function(l) {
+        if (!l.lat) return;
+        var m = new AMap.CircleMarker({
+          center: [l.lng, l.lat],
+          radius: 4,
+          fillColor: d.color,
+          fillOpacity: 0.9,
+          strokeColor: '#fff',
+          strokeWeight: 1.5,
+          strokeOpacity: 1,
+          map: map,
+          zIndex: 100,
+        });
+        var info = new AMap.InfoWindow({
+          content: '<b>' + l.name + '</b><br><span style="color:#86868b">' + d.label + '</span>',
+          offset: new AMap.Pixel(0, -10),
+          closeWhenClickMap: true,
+        });
+        (function(marker, infoWin) {
+          marker.on('click', function() {
+            infoWin.open(map, marker.getCenter());
+          });
+        })(m, info);
         markers.push(m);
+        infoWindows.push(info);
+        allMarkers.push(m);
       });
     });
+    if (allMarkers.length > 0) {
+      map.setFitView(allMarkers, false, [60, 60, 60, 60]);
+    }
     return;
   }
-  const day = DAYS.find(d=>d.id===idx);
-  if(!day) return;
-  const coords = [];
-  day.locations.forEach(l => {
-    if(!l.lat) return;
-    const m = L.marker([l.lat,l.lng], { icon: icon(day.color, emojis[l.type]||'📌') }).addTo(map);
-    const gmapQ = l.gmap||encodeURIComponent(l.name+' Tokyo');
-    m.bindPopup(`<b>${l.name}</b>${l.time!=='—'?'<br><span style="color:#86868b">'+l.time+'</span>':''}<br>${l.desc}${l.budget?'<br><span style="color:#ff9500">'+l.budget+'</span>':''}<br><a href="#" onclick="event.preventDefault();openAS('${l.name.replace(/'/g,"\\'")}',${l.lat},${l.lng},'${gmapQ}')">📍 导航</a>${l.xhs?' · <a href="'+l.xhs+'" target="_blank">📕 小红书</a>':''}`);
+
+  var day = DAYS.find(function(d) { return d.id === idx; });
+  if (!day) return;
+
+  var coords = [];
+  var dayMarkers = [];
+
+  day.locations.forEach(function(l) {
+    if (!l.lat) return;
+    var emoji = emojis[l.type] || '📌';
+    var m = new AMap.Marker({
+      position: [l.lng, l.lat],
+      content: createMarkerContent(day.color, emoji),
+      offset: new AMap.Pixel(-14, -14),
+      map: map,
+      zIndex: 100,
+    });
+
+    // Build info window content
+    var gmapQ = l.gmap || encodeURIComponent(l.name + ' Tokyo');
+    var infoHtml = '<b>' + l.name + '</b>';
+    if (l.time && l.time !== '—') infoHtml += '<br><span style="color:#86868b">' + l.time + '</span>';
+    infoHtml += '<br>' + l.desc;
+    if (l.budget) infoHtml += '<br><span style="color:#ff9500">' + l.budget + '</span>';
+    // Route info for road-trip
+    if (l.type === 'road-trip' && (l.distance || l.driveTime || l.toll || l.roadType)) {
+      infoHtml += '<br><span style="color:#34c759;font-size:12px;">';
+      if (l.distance) infoHtml += '📏 ' + l.distance + ' ';
+      if (l.driveTime) infoHtml += '⏱️ ' + l.driveTime + ' ';
+      if (l.toll) infoHtml += '💰 ¥' + l.toll + ' ';
+      if (l.roadType) infoHtml += '🛣️ ' + l.roadType;
+      infoHtml += '</span>';
+    }
+    infoHtml += '<br><a href="#" onclick="event.preventDefault();openAS(\'' + l.name.replace(/'/g, "\\'") + '\',' + l.lat + ',' + l.lng + ',\'' + gmapQ + '\')">📍 导航</a>';
+    if (l.xhs) infoHtml += ' · <a href="' + l.xhs + '" target="_blank">📕 小红书</a>';
+
+    var info = new AMap.InfoWindow({
+      content: infoHtml,
+      offset: new AMap.Pixel(0, -20),
+      closeWhenClickMap: true,
+      autoMove: true,
+    });
+    (function(marker, infoWin) {
+      marker.on('click', function() {
+        infoWin.open(map, marker.getPosition());
+      });
+    })(m, info);
+
     markers.push(m);
-    if(l.time!=='—') coords.push([l.lat,l.lng]);
+    infoWindows.push(info);
+    dayMarkers.push(m);
+    if (l.time !== '—') coords.push([l.lng, l.lat]);
   });
-  if(coords.length>1) {
-    // Use solid line for road-trip segments, dashed for others
-    const hasRoadTrip = day.locations.some(l => l.type==='road-trip');
-    const pl = L.polyline(coords, { color:day.color, weight: hasRoadTrip ? 3 : 2.5, opacity: hasRoadTrip ? 0.7 : 0.5, dashArray: hasRoadTrip ? null : '6,5' }).addTo(map);
+
+  // Draw polyline connecting locations
+  if (coords.length > 1) {
+    var hasRoadTrip = day.locations.some(function(l) { return l.type === 'road-trip'; });
+    var pl = new AMap.Polyline({
+      path: coords,
+      isOutline: true,
+      outlineColor: '#ffffff',
+      borderWeight: 2,
+      strokeColor: day.color,
+      strokeWeight: hasRoadTrip ? 5 : 3,
+      strokeStyle: 'solid',
+      strokeOpacity: hasRoadTrip ? 0.9 : 0.6,
+      map: map,
+      zIndex: 50,
+    });
     polylines.push(pl);
+
+    // Add route segment labels for road-trip type
+    if (hasRoadTrip) {
+      var locs = day.locations.filter(function(l) { return l.time !== '—' && l.lat; });
+      for (var i = 0; i < locs.length - 1; i++) {
+        var loc = locs[i];
+        if (loc.type === 'road-trip' && (loc.distance || loc.driveTime || loc.toll || loc.roadType)) {
+          var nextLoc = locs[i + 1];
+          var midLng = (loc.lng + nextLoc.lng) / 2;
+          var midLat = (loc.lat + nextLoc.lat) / 2;
+          var labelParts = [];
+          if (loc.distance) labelParts.push(loc.distance);
+          if (loc.driveTime) labelParts.push(loc.driveTime);
+          if (loc.toll) labelParts.push('¥' + loc.toll);
+          if (loc.roadType) labelParts.push(loc.roadType);
+          var labelText = '🚗 ' + labelParts.join(' | ');
+
+          var labelMarker = new AMap.Marker({
+            position: [midLng, midLat],
+            content: '<div style="background:rgba(255,255,255,.92);backdrop-filter:blur(6px);padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600;color:#34c759;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.12);border:1px solid rgba(52,199,89,.2);">' + labelText + '</div>',
+            offset: new AMap.Pixel(-60, -10),
+            map: map,
+            zIndex: 80,
+          });
+          markers.push(labelMarker);
+        }
+      }
+    }
   }
-  if(coords.length) map.fitBounds(coords, { padding:[40,40], maxZoom:14 });
+
+  if (dayMarkers.length > 0) {
+    map.setFitView(dayMarkers, false, [60, 60, 60, 60]);
+  }
 }
 
 // ══════════ RENDER ══════════
@@ -500,8 +751,6 @@ function toggle(id) { const el=document.getElementById(id); if(el) el.classList.
 
 tabsEl.addEventListener('click', e => { const t=e.target.closest('.tab'); if(t) go(+t.dataset.day); });
 
-go(0);
-
 /* ── Action Sheet for Navigation ── */
 const asOverlay = document.createElement('div');
 asOverlay.className = 'as-overlay';
@@ -541,6 +790,23 @@ function openAS(name, lat, lng, gmap) {
   asOverlay.classList.add('show');
 }
 function closeAS() { asOverlay.classList.remove('show'); }
+
+// ── Load AMap JSAPI 2.0 ──
+(function() {
+  var key = '<!-- REPLACE: AMAP_JSAPI_KEY -->';
+  var script = document.createElement('script');
+  script.src = 'https://webapi.amap.com/maps?v=2.0&key=' + key;
+  script.onload = function() {
+    initMap();
+    go(0);
+  };
+  script.onerror = function() {
+    console.error('AMap JSAPI 2.0 failed to load');
+    document.getElementById('map').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#86868b;font-size:14px;">地图加载失败，请检查网络连接</div>';
+    go(0);
+  };
+  document.head.appendChild(script);
+})();
 </script>
 </body>
 </html>
