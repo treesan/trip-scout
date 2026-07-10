@@ -45,6 +45,7 @@ description: >
 核心流程：
 1. 确认搜索条件（目的地、日期、人数、预算）
 2. 并行调用飞猪 `flyai search-hotel` + 携程问道 API
+   - **价格是酒店筛选最重要的一项**：携程问道可查指定酒店精确房型含早价（非区间），Phase 1/2/3 日期变动重验证都用它，比 ctrip_prices.py(Playwright需登录)更轻量。详见 `references/hotel-search.md` "问道查指定酒店房型含早价格"
 3. **黑名单过滤** — 直接移除已拉黑酒店
 4. **品牌信任过滤** — 低信任品牌需额外验证
 5. **差评分析** — 区分成长性差评 vs 本质性差评（必须先调用 `python scripts/ctrip_reviews.py <hotelId>`，详见 `references/review-analysis.md`）
