@@ -68,11 +68,10 @@ description: >
 
 ### Phase 4: 飞书参考（可选）
 
-用户提到"参考之前的攻略"时触发。
+用户提到"参考之前的攻略"时触发，一般会直接给飞书文档/文件夹链接。用 `lark-cli` 读取（链接由用户提供，勿硬编码）：
 
-读取飞书文件夹「旅行攻略」：
 ```bash
-lark-cli drive +inspect --url 'https://my.feishu.cn/drive/folder/AhBBfyHLulWjdwdR3ZKcqMHBngd'
+lark-cli drive +inspect --url '<用户提供的飞书文档/文件夹URL>'
 ```
 
 提取历史行程中的酒店评价、目的地信息、路线规划作为搜索参考。
