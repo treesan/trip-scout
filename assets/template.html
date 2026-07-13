@@ -320,7 +320,7 @@ function overviewContent() {
   <div class="info-card"><div class="label">预估费用</div><div class="value"><!-- REPLACE --></div></div>
 </div>
 <div class="section-head">行程概览</div>
-<div class="day-list">${DAYS.slice(1).map(d=>\`<div class="card" onclick="go(\${d.id})"><div class="name"><span class="dot" style="background:\${d.color}"></span>\${d.label} · \${d.title}</div><div class="desc">\${d.date}</div></div>\`).join('')}</div>
+<div class="day-list">${DAYS.slice(1).map(d=>`<div class="card" onclick="go(${d.id})"><div class="name"><span class="dot" style="background:${d.color}"></span>${d.label} · ${d.title}</div><div class="desc">${d.date}</div></div>`).join('')}</div>
 <div class="section-head">支付提醒</div>
 <!-- REPLACE: Add pay-summary cards as needed -->
 <div class="section-head">图例</div>
@@ -495,10 +495,11 @@ function showDay(idx) {
   updateLegend(idx);
 
   if (idx === 0) {
-    // Overview: small circle markers for all days
+    // Overview: per-day polylines + circle markers for all days
     var allMarkers = [];
     DAYS.slice(1).forEach(function(d) {
-      d.locations.filter(function(l) { return l.time !== '—'; }).forEach(function(l) {
+      var dayCoords = [];
+      d.locations.forEach(function(l) {
         if (!l.lat) return;
         var m = new AMap.CircleMarker({
           center: [l.lng, l.lat],
@@ -524,7 +525,21 @@ function showDay(idx) {
         markers.push(m);
         infoWindows.push(info);
         allMarkers.push(m);
+        dayCoords.push([l.lng, l.lat]);
       });
+      // Connect this day's stops with a colored polyline (matches legend)
+      if (dayCoords.length >= 2) {
+        var pl = new AMap.Polyline({
+          path: dayCoords,
+          strokeColor: d.color,
+          strokeWeight: 4,
+          strokeOpacity: 0.85,
+          lineJoin: 'round',
+          lineCap: 'round',
+          map: map,
+        });
+        polylines.push(pl);
+      }
     });
     if (allMarkers.length > 0) {
       map.setFitView(allMarkers, false, [60, 60, 60, 60]);
