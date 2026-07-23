@@ -141,6 +141,7 @@ lark-cli drive +inspect --url '<用户提供的飞书文档/文件夹URL>'
    - `python scripts/ctrip_reviews.py <hotelId> --months 12 --pages 20`（API模式，拿总评论数+差评率）
    - `python scripts/ctrip_reviews.py <hotelId> --no-api --months 12 --pages 3`（浏览器模式，拿精确差评做分类分析）
    - ⚠️ **API模式用评分≤3过滤会漏90%差评**（携程差评定义≠评分≤3），差评内容分析必须用浏览器模式
+   - ⚠️ **全量评价触发条件**：酒店**开业≤1年** 或 API首跑`totalCount`≤100 时，差评样本过少会失真，改用 `python scripts/ctrip_reviews.py <hotelId> --all --months 12 --pages 20`（API模式抓全部评价+评分分布作为分析依据，跳过浏览器差评专属分析）。开业年份脚本拿不到，由 agent 从问道/搜索结果判断后加 `--all`。详见 `references/review-analysis.md`
 5. 酒店对比时必须全方位对比（日期/房型/价格/差评），详见 `references/hotel-search.md` 酒店全方位对比规则
 6. 详见 `references/review-analysis.md` 携程差评量化规则
 
