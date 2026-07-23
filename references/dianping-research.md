@@ -81,6 +81,24 @@ opencli dianping shop "https://www.dianping.com/shop/<shop_id>"
 - 忽略排队、预约和营业时间
 - 搜索词太泛，得到一堆游客店
 
+## 降级兜底：meituan-travel（OpenCLI 不可用时）
+
+当 OpenCLI Browser Bridge 不可用（Chrome 未登录 dianping.com / 未装扩展）时，可用 `meituan-travel` 的 `query` 命令做餐厅粗筛兜底：
+
+```bash
+MEITUAN_RAW_JSON=1 npx --yes @meituan-travel/ht-ai@latest \
+  query --query '推荐{城市}{关键词}餐厅，午餐/晚餐，请给出店名、评分、商圈和评价' \
+  --origin-query '推荐{城市}{关键词}餐厅，午餐/晚餐，请给出店名、评分、商圈和评价' \
+  --channel meituan-developer
+```
+
+能力边界（兜底模式，弱信号）：
+- ✅ 能拿到：餐厅名、评分、商圈、AI口碑摘要
+- ❌ 拿不到：**评价量、结构化人均价、逐店详情、评价列表**（只有 `query` 一个命令，评论是 AI 摘要非原始数据）
+- 因此兜底模式**不做硬信号分析**（无评价量判信号强度、无人均判预算），仅做"是否高分店"粗筛
+
+美团/大众点评共享点评库，AI 摘要仍反映真实口碑，但无法量化。OpenCLI 可用时**必须用 dianping 主流程**（评价量/人均/逐店详情）。
+
 ## 官方参考
 
 - https://github.com/jackwener/OpenCLI/blob/main/docs/adapters/browser/dianping.md

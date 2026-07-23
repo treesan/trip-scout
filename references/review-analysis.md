@@ -164,7 +164,12 @@ python scripts/ctrip_reviews.py search "伊宁绿发洲际酒店"
 2. **携程问道API**(补充): 问"近一年差评分类、典型问题"拿摘要, 与脚本结果交叉。
    - ⚠️ 问道只给代表性摘要, 可能漏差评; 会话常被锁定。
    - ⚠️ **绝不能只用问道做差评分析**--违反强制规则，必须先跑脚本
-3. **脚本完全不可用时的降级**:
+3. **美团 meituan-travel (补充, 跨平台评分交叉验证)**: `MEITUAN_RAW_JSON=1 npx --yes @meituan-travel/ht-ai@latest query --query '<酒店名 日期 房型>' --origin-query '<同>' --channel meituan-developer`
+   - 返回 `{"status","data":<Markdown>}`, 从 Markdown 提取 **美团真实评分 + 起步价 + 开业时间 + AI口碑摘要**
+   - ⚠️ **AI摘要, 不做差评量化依据** (无评价量/评价列表/时间分布), 定位同问道: 补充非替代
+   - 价值: 携程 vs 美团评分交叉验证; 稀疏评价酒店 (开业≤1年/评价量≤100) 补第二平台信号
+   - 1-2分钟延迟, 仅单店定点查; stdout 末尾混入 `🔍 查询中` 状态行, 解析前需剥离
+4. **脚本完全不可用时的降级**:
    - 登录态过期 -> 重新 `python scripts/ctrip_reviews.py login --show`
    - 被风控/验证码 -> `python scripts/ctrip_reviews.py <hotelId> --show`（显示浏览器窗口手动过验证码）
    - 全部失败 -> 只用问道摘要，**必须在输出中标注"⚠️ 未量化分析(脚本不可用)"**
@@ -307,5 +312,6 @@ python scripts/ctrip_reviews.py search "伊宁绿发洲际酒店"
 ### 评分异常
 
 - 同品牌不同店评分差异 > 1.0 → 标注"品控不稳"
+- 携程评分 vs 美团真实评分分歧 > 0.5 → 标注"跨平台口碑分歧⚠️"
 - 评价量 ≤ 100 → **触发全量评价抓取**(`--all`, 详见上方"全量评价触发"), 并标注"评价不足, 参考价值有限"
 - 近30天差评突增 → 标注"近期口碑下降"

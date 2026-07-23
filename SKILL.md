@@ -142,6 +142,7 @@ lark-cli drive +inspect --url '<用户提供的飞书文档/文件夹URL>'
    - `python scripts/ctrip_reviews.py <hotelId> --no-api --months 12 --pages 3`（浏览器模式，拿精确差评做分类分析）
    - ⚠️ **API模式用评分≤3过滤会漏90%差评**（携程差评定义≠评分≤3），差评内容分析必须用浏览器模式
    - ⚠️ **全量评价触发条件**：酒店**开业≤1年** 或 API首跑`totalCount`≤100 时，差评样本过少会失真，改用 `python scripts/ctrip_reviews.py <hotelId> --all --months 12 --pages 20`（API模式抓全部评价+评分分布作为分析依据，跳过浏览器差评专属分析）。开业年份脚本拿不到，由 agent 从问道/搜索结果判断后加 `--all`。详见 `references/review-analysis.md`
+   - 💡 **美团评分补充**：可用 `meituan-travel` 查美团真实评分+AI口碑摘要做跨平台交叉验证（携程 vs 美团评分分歧>0.5⚠️），AI摘要不做量化依据，详见 `references/review-analysis.md`；酒店起步价见 `references/hotel-search.md` 美团平台比价
 5. 酒店对比时必须全方位对比（日期/房型/价格/差评），详见 `references/hotel-search.md` 酒店全方位对比规则
 6. 详见 `references/review-analysis.md` 携程差评量化规则
 
@@ -500,6 +501,7 @@ python scripts/init_memory.py
 | **amap-lbs-skill** | 高德驾车路线规划+POI搜索（支持途经点） | `openclaw skills install @lbs-amap/amap-lbs-skill` |
 | **amap-mcp-remote** | 高德专属地图+导航+打车（远程MCP Server，15个工具） | Streamable HTTP，见4B配置教程 |
 | **神州租车API** | 租车搜索（一嗨/神州异地还车费已免除） | 见 [开发者文档](https://developer.zuche.com/api.do) |
+| **meituan-travel** | 美团酒旅（酒店比价起步价+口碑评分补充+餐厅兜底） | `npx @meituan-travel/ht-ai`，需 `MEITUAN_HT_TOKEN` |
 
 ### 开箱即用说明(clone 后)
 
@@ -515,6 +517,7 @@ python scripts/init_memory.py
 export FLYAI_API_KEY="..."        # 飞猪
 export WENDAO_API_KEY="..."       # 携程问道
 export AMAP_WEBSERVICE_KEY="..."  # 高德地图(自驾游路线规划)
+export MEITUAN_HT_TOKEN="..."     # 美团酒旅(酒店比价+口碑补充+餐厅兜底)
 
 # 4. 配置高德远程MCP Server(专属地图+导航+打车)
 # Claude Code — 编辑 ~/.claude/settings.json:
